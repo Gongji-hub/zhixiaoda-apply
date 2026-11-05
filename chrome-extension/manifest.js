@@ -1,0 +1,15 @@
+export default {
+  manifest_version: 3,
+  minimum_chrome_version: '120',
+  name: '职小搭 · 网申助手（开源版）',
+  description: '导入自己的简历，连接自己的模型，在招聘官网辅助填写并逐项核对。',
+  version: '0.9.6',
+  default_locale: 'en',
+  permissions: ['storage', 'scripting', 'tabs', 'debugger', 'webNavigation', 'sidePanel'],
+  host_permissions: ['https://*/*', 'http://127.0.0.1/*', 'http://localhost/*'],
+  background: { service_worker: 'background.js', type: 'module' },
+  side_panel: { default_path: 'job-panel/index.html' },
+  options_page: 'settings/index.html',
+  action: { default_icon: 'icon-32.png' },
+  icons: { 32: 'icon-32.png', 128: 'icon-128.png' },
+};

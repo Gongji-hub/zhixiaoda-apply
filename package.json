@@ -1,0 +1,21 @@
+{
+  "name": "zhixiaoda-apply",
+  "version": "0.9.6",
+  "private": true,
+  "type": "module",
+  "description": "职小搭 · 网申助手（开源版）",
+  "license": "Apache-2.0",
+  "engines": {"node": ">=22.12"},
+  "scripts": {"build": "node scripts/build.mjs"},
+  "dependencies": {
+    "@langchain/core": "0.3.79",
+    "fflate": "0.8.2",
+    "jsonrepair": "3.13.1",
+    "pdfjs-dist": "4.10.38",
+    "puppeteer-core": "24.31.0",
+    "webextension-polyfill": "0.12.0",
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.25.0"
+  },
+  "devDependencies": {"ajv":"8.17.1","esbuild": "0.25.12"}
+}

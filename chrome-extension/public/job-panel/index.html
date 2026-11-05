@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>职小搭 · 网申助手（开源版）</title>
+  <link rel="stylesheet" href="styles.css?v=20261019lean">
+</head>
+<body data-step="1">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-copy"><img class="brand-symbol" src="brand-symbol.png" alt=""><div><strong>职<span>小搭</span></strong><span>网申助手 · 开源版</span></div></div>
+      <div class="connection" id="connection"><i></i><span>正在连接</span></div>
+    </header>
+
+    <main>
+      <nav class="step-bar" id="step-bar" aria-label="投递进度">
+        <div class="step-item" id="step-1" data-step="1" data-state="active"><span class="step-num">1</span><span class="step-name">准备资料</span></div>
+        <span class="step-arrow" aria-hidden="true">→</span>
+        <div class="step-item" id="step-2" data-step="2" data-state="upcoming"><span class="step-num">2</span><span class="step-name">自动填写</span></div>
+        <span class="step-arrow" aria-hidden="true">→</span>
+        <div class="step-item" id="step-3" data-step="3" data-state="upcoming"><span class="step-num">3</span><span class="step-name">核对提交</span></div>
+      </nav>
+      <section class="application-sheet" aria-label="本次申请与资料">
+        <div class="hero-job" hidden>
+          <div class="job-copy"><span class="job-label">当前目标</span><strong>等待选择岗位</strong><small>打开招聘官网</small></div>
+          <img class="job-symbol" src="icons/briefcase.svg" alt="">
+        </div>
+        <div class="resume-card" aria-live="polite">
+          <div class="file-symbol"><img src="icons/file.svg" alt=""></div>
+          <div class="file-meta"><strong id="resume-name">正在读取个人资料…</strong><span id="resume-meta">正在读取本地设置…</span><span id="source-meta"></span></div>
+          <span class="file-check" id="file-check" aria-label="申请资料状态">—</span>
+        </div>
+        <div id="material-actions" class="material-actions"><button id="profile-link" type="button">简历与模型设置 ↗</button></div>
+      </section>
+
+      <div class="task-workspace">
+      <section class="flow-card progress-card">
+        <div class="section-title flow-heading"><div><h2>填写进度</h2></div><span class="section-hint" id="step-counter">待开始</span></div>
+        <div class="flow-current">
+          <div class="flow-pulse" id="flow-pulse" aria-hidden="true"><img src="icons/activity.svg" alt=""></div>
+          <div role="status" aria-live="polite"><strong id="status-title">准备开始</strong><p id="status-message">开始后将检查当前页面，并逐项填写。</p></div>
+        </div>
+        <p id="foreground-hint" class="foreground-hint" hidden>请保持申请页面在前台，切走后会自动暂停。</p>
+        <button id="return-to-application" class="return-to-application" type="button" hidden>返回申请页面 <span aria-hidden="true">↗</span></button>
+        <div class="progress-track"><div id="progress-fill"></div></div>
+        <details id="event-history"><summary>填写记录<img src="icons/chevron.svg" alt=""></summary><ol class="event-list" id="event-list" aria-live="polite"></ol></details>
+      </section>
+
+
+      <section id="review-card" class="flow-card" hidden aria-live="polite">
+        <div class="review-heading"><h2>字段核对</h2><span id="review-count"></span></div><p>优先查看待处理项，已处理内容可展开核对。</p><ul id="review-list"></ul><details id="review-completed" hidden><summary><span id="review-completed-count"></span><img src="icons/chevron.svg" alt=""></summary><ul id="review-completed-list"></ul></details>
+      </section>
+      </div>
+      <!-- 本地调试：只在配对配置 debug=true 时收到事件并显示，上线配置不带它。 -->
+      <details id="debug-card" class="flow-card" hidden>
+        <summary>调试日志 <span id="debug-summary"></span></summary>
+        <button id="debug-copy" type="button">复制全部</button>
+        <ol id="debug-list"></ol>
+      </details>
+    </main>
+
+    <footer class="actions">
+      <div id="panel-feedback" class="panel-feedback" hidden>
+        <div><p id="panel-feedback-text" role="alert" aria-atomic="true"></p><button id="panel-feedback-retry" type="button" hidden></button></div>
+        <button id="panel-feedback-dismiss" class="icon-button" type="button" aria-label="关闭提示"><img src="icons/close.svg" alt=""></button>
+      </div>
+      <p id="action-status" class="action-status" hidden></p>
+      <button class="primary-button" id="start-button" type="button"><span>准备申请资料</span></button>
+      <button class="stop-button" id="stop-button" type="button" hidden>暂停操作</button>
+    </footer>
+  </div>
+  <dialog id="question-dialog" aria-labelledby="question-title" aria-describedby="question-reason">
+    <form id="question-form">
+      <div class="question-header"><div class="dialog-heading"><img src="icons/message.svg" alt=""><span class="question-kicker">补充申请信息</span></div><button class="icon-button" id="question-close" type="button" aria-label="关闭，保留当前问题" title="关闭，保留当前问题"><img src="icons/close.svg" alt=""></button></div>
+      <h2 id="question-title"></h2>
+      <div id="question-reason"></div>
+      <div id="question-options"></div>
+      <label id="question-answer-label" for="question-answer">补充信息</label>
+      <textarea id="question-answer" rows="3" maxlength="4000" placeholder="输入你的回答…"></textarea>
+      <p id="question-error" role="alert"></p>
+      <div class="profile-preference">
+      <small id="question-help">补充回答仅用于本次填写。</small>
+      </div>
+      <button class="secondary-button manual-page-button" id="question-open-page" type="button" hidden>打开招聘页面 ↗</button>
+      <div class="question-actions">
+        <button class="text-button" id="question-defer" type="button">稍后处理</button>
+        <button class="secondary-button" id="question-skip" type="button">跳过这一项</button>
+        <button class="primary-button" id="question-submit" type="submit">继续填写</button>
+      </div>
+    </form>
+  </dialog>
+  <script src="site-policy.js"></script>
+  <script src="progress-copy.js"></script>
+  <script src="motion.js?v=20261015feedback"></script>
+  <script src="app.js?v=20261015feedback"></script>
+</body>
+</html>

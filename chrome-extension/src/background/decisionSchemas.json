@@ -1,0 +1,1175 @@
+{
+  "navigator_output": {
+    "type": "object",
+    "properties": {
+      "current_state": {
+        "type": "object",
+        "properties": {
+          "evaluation_previous_goal": {
+            "type": "string",
+            "title": "Evaluation Previous Goal"
+          },
+          "memory": {
+            "type": "string",
+            "title": "Memory"
+          },
+          "next_goal": {
+            "type": "string",
+            "title": "Next Goal"
+          }
+        },
+        "required": [
+          "evaluation_previous_goal",
+          "memory",
+          "next_goal"
+        ],
+        "description": "Current state of the agent",
+        "title": "Current State"
+      },
+      "action": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ask_user": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "information",
+                        "manual_action"
+                      ],
+                      "default": "information",
+                      "description": "information requests missing facts; manual_action waits for a human action on the website. Choose from observed state, not labels.",
+                      "title": "Kind"
+                    },
+                    "question": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 300,
+                      "description": "Short user-facing Chinese question or manual instruction. Identify the experience briefly; no indices, internal reasoning, or required input format. Example: 金融公益讲师团项目是什么时候开始、什么时候结束的？",
+                      "title": "Question"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 600,
+                      "description": "Internal rationale for the agent; not displayed to the user. Keep the user-facing question self-contained.",
+                      "title": "Reason"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "maxItems": 8,
+                      "description": "Observed webpage choices or ways to resolve a conflict; never inferred personal facts; empty for free text",
+                      "title": "Options"
+                    },
+                    "index": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Current observed field index, when the question concerns one control; bind skips and answers to it.",
+                      "title": "Index"
+                    },
+                    "proposed_value": {
+                      "type": "string",
+                      "maxLength": 12000,
+                      "description": "For replacement confirmation only: exact proposed text or observed option label. Requires index. The UI explicitly asks the user to approve it.",
+                      "title": "Proposed Value"
+                    },
+                    "replacements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "title": "Index"
+                          },
+                          "proposed_value": {
+                            "type": "string",
+                            "maxLength": 12000,
+                            "title": "Proposed Value"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "proposed_value"
+                        ]
+                      },
+                      "minItems": 1,
+                      "maxItems": 20,
+                      "description": "Exact fields to confirm together. Do not combine with index, proposed_value or review_key. Only required fields may prompt.",
+                      "title": "Replacements"
+                    },
+                    "review_key": {
+                      "type": "string",
+                      "maxLength": 8000,
+                      "description": "For an unresolved checklist field on an earlier page only; exact key from FINAL_REVIEW_INCOMPLETE. Do not combine with index or proposed_value. Allows the user to explicitly skip that recorded item.",
+                      "title": "Review Key"
+                    }
+                  },
+                  "required": [
+                    "question",
+                    "reason",
+                    "options"
+                  ],
+                  "description": "Ask in Chinese only for required fields needing user information, or necessary manual login/actions. Optional fields must not trigger questions: fill from known evidence or preserve/leave blank. Put the observed field index in the index parameter, never in user-facing text. Ask one short, plain-language question with enough context to identify the experience; shorten long project titles without losing identity. Do not repeat the missing-evidence rationale, mandatory status, technical details, or date format examples in the question. Accept natural-language answers and convert clear answers into the website format yourself; clarify only genuine ambiguity. To replace one existing value include index and proposed_value; to confirm multiple fields together use replacements with every observed index and proposed_value. The UI displays only these bound fields; never claim approval of unlisted fields. Finish other grounded fields first.",
+                  "title": "Ask User"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "done": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "title": "Text"
+                    },
+                    "success": {
+                      "type": "boolean",
+                      "title": "Success"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "success"
+                  ],
+                  "description": "Complete task",
+                  "title": "Done"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "wait": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "seconds": {
+                      "type": "integer",
+                      "default": 3,
+                      "description": "amount of seconds",
+                      "title": "Seconds"
+                    }
+                  },
+                  "description": "Wait for x seconds default 3, do NOT use this action unless user asks to wait explicitly",
+                  "title": "Wait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "click_element": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "effect": {
+                      "type": "string",
+                      "enum": [
+                        "open_interface",
+                        "edit_application",
+                        "advance_form",
+                        "authenticate",
+                        "submit_application",
+                        "accept_terms",
+                        "upload_file",
+                        "solve_challenge",
+                        "uncertain"
+                      ],
+                      "description": "Classify the actual effect using current page context. open_interface only reveals or navigates to an interface; edit_application changes resume form fields. accept_terms checks an authorized routine recruiting consent checkbox/radio/switch only. authenticate, submit_application, upload_file, solve_challenge and uncertain require user handoff. A label alone is not enough. advance_form saves or advances the current form and requires its mandatory fields to be complete; it never authorizes final submission. Use open_interface for revealing independent sections.",
+                      "title": "Effect"
+                    },
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "index": {
+                      "type": "integer",
+                      "description": "index of the element",
+                      "title": "Index"
+                    },
+                    "xpath": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "description": "xpath of the element",
+                          "title": "Xpath"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "effect",
+                    "index"
+                  ],
+                  "description": "Click element by index",
+                  "title": "Click Element"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "input_text": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "effect": {
+                      "type": "string",
+                      "enum": [
+                        "open_interface",
+                        "edit_application",
+                        "advance_form",
+                        "authenticate",
+                        "submit_application",
+                        "accept_terms",
+                        "upload_file",
+                        "solve_challenge",
+                        "uncertain"
+                      ],
+                      "description": "Classify the actual effect using current page context. open_interface only reveals or navigates to an interface; edit_application changes resume form fields. accept_terms checks an authorized routine recruiting consent checkbox/radio/switch only. authenticate, submit_application, upload_file, solve_challenge and uncertain require user handoff. A label alone is not enough. advance_form saves or advances the current form and requires its mandatory fields to be complete; it never authorizes final submission. Use open_interface for revealing independent sections.",
+                      "title": "Effect"
+                    },
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "index": {
+                      "type": "integer",
+                      "description": "index of the element",
+                      "title": "Index"
+                    },
+                    "text": {
+                      "type": "string",
+                      "description": "text to input",
+                      "title": "Text"
+                    },
+                    "replace_existing": {
+                      "type": "boolean",
+                      "description": "True only after the user explicitly confirmed replacing this existing value through ask_user",
+                      "title": "Replace Existing"
+                    },
+                    "xpath": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "description": "xpath of the element",
+                          "title": "Xpath"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "effect",
+                    "index",
+                    "text"
+                  ],
+                  "description": "Input evidenced text into an interactive input element. Never enter internal sanitization markers such as [EMAIL] or [REDACTED_*]. A pure internal marker already in an application field may be repaired with an evidenced real value.",
+                  "title": "Input Text"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cache_content": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "content": {
+                      "type": "string",
+                      "default": "",
+                      "description": "content to cache",
+                      "title": "Content"
+                    }
+                  },
+                  "description": "Cache what you have found so far from the current page for future use",
+                  "title": "Cache Content"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scroll_to_percent": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "yPercent": {
+                      "type": "integer",
+                      "description": "percentage to scroll to - min 0, max 100; 0 is top, 100 is bottom",
+                      "title": "Y Percent"
+                    },
+                    "index": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "description": "index of the element",
+                          "title": "Index"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "yPercent"
+                  ],
+                  "description": "Scrolls to a particular vertical percentage of the document or an element. If no index of element is specified, scroll the whole document.",
+                  "title": "Scroll To Percent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scroll_to_top": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "index": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "description": "index of the element",
+                          "title": "Index"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "description": "Scroll the document in the window or an element to the top",
+                  "title": "Scroll To Top"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scroll_to_bottom": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "index": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "description": "index of the element",
+                          "title": "Index"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "description": "Scroll the document in the window or an element to the bottom",
+                  "title": "Scroll To Bottom"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "previous_page": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "index": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "description": "index of the element",
+                          "title": "Index"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "description": "Scroll the document in the window or an element to the previous page. If no index is specified, scroll the whole document.",
+                  "title": "Previous Page"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "next_page": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "index": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "description": "index of the element",
+                          "title": "Index"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "description": "Scroll the document in the window or an element to the next page. If no index is specified, scroll the whole document.",
+                  "title": "Next Page"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scroll_to_text": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "text": {
+                      "type": "string",
+                      "description": "text to scroll to",
+                      "title": "Text"
+                    },
+                    "nth": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 1,
+                      "description": "which occurrence of the text to scroll to (1-indexed, default: 1)",
+                      "title": "Nth"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "description": "If you dont find something which you want to interact with in current viewport, try to scroll to it",
+                  "title": "Scroll To Text"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "get_dropdown_options": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "index": {
+                      "type": "integer",
+                      "description": "index of the dropdown element",
+                      "title": "Index"
+                    }
+                  },
+                  "required": [
+                    "index"
+                  ],
+                  "description": "Get all options from a native dropdown",
+                  "title": "Get Dropdown Options"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "select_dropdown_option": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "index": {
+                      "type": "integer",
+                      "description": "index of the dropdown element",
+                      "title": "Index"
+                    },
+                    "text": {
+                      "type": "string",
+                      "description": "text of the option",
+                      "title": "Text"
+                    },
+                    "replace_existing": {
+                      "type": "boolean",
+                      "description": "True only after the user confirmed replacing an existing selection through ask_user",
+                      "title": "Replace Existing"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "text"
+                  ],
+                  "description": "Select an observed option in a native single-select control; reports the actual value after verification. Existing different values require user confirmation. Custom dropdowns require observed clicks.",
+                  "title": "Select Dropdown Option"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "select_custom_option": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "description": "index of the combobox or listbox field itself",
+                      "title": "Index"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "desired value from the resume, or a candidate label already judged equivalent; also used for replacement confirmation",
+                      "title": "Text"
+                    },
+                    "replace_existing": {
+                      "type": "boolean",
+                      "description": "True only after ask_user confirmed this exact replacement",
+                      "title": "Replace Existing"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "text"
+                  ],
+                  "description": "Choose an option of a custom combobox or single-select listbox in one call. The tool searches using the requested name. If no same-name option exists, the Agent evaluates the real candidates using the field context and resume, allowing abbreviations, former names and equivalent labels. It then clicks the chosen real option and verifies selection. Do not require resume wording to equal website wording. Unbound custom controls require manual_action; never use click_element to bypass this tool.",
+                  "title": "Select Custom Option"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "click_text": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "exact visible text of the element to click",
+                      "title": "Text"
+                    },
+                    "after": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "description": "visible text that appears before the target, such as its section title, to pick the right one",
+                          "title": "After"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effect": {
+                      "type": "string",
+                      "enum": [
+                        "open_interface",
+                        "edit_application",
+                        "advance_form",
+                        "authenticate",
+                        "submit_application",
+                        "accept_terms",
+                        "upload_file",
+                        "solve_challenge",
+                        "uncertain"
+                      ],
+                      "description": "Classify the actual effect using current page context. open_interface only reveals or navigates to an interface; edit_application changes resume form fields. accept_terms checks an authorized routine recruiting consent checkbox/radio/switch only. authenticate, submit_application, upload_file, solve_challenge and uncertain require user handoff. A label alone is not enough. advance_form saves or advances the current form and requires its mandatory fields to be complete; it never authorizes final submission. Use open_interface for revealing independent sections.",
+                      "title": "Effect"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "effect"
+                  ],
+                  "description": "Click an entry the page renders as plain text without an index (for example an \"add another\" link shown as text). The tool finds the visible element with exactly this text (after the given anchor text when several match) and clicks it. Never use it for options of a dropdown or a date panel, and never for submission.",
+                  "title": "Click Text"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "pick_date": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "description": "index of the date field itself",
+                      "title": "Index"
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "YYYY-MM, or YYYY-MM-DD when the field needs a day",
+                      "title": "Value"
+                    },
+                    "replace_existing": {
+                      "type": "boolean",
+                      "description": "True only after ask_user confirmed replacing the current date",
+                      "title": "Replace Existing"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "value"
+                  ],
+                  "description": "Set a date field through its date panel in one call: the tool opens the panel, pages to the year and month by reading its header, clicks the target cell and reads the field back. Use it for read-only date fields or when typing a date was not accepted. Do not click panel cells yourself.",
+                  "title": "Pick Date"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "select_multiple_options": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "description": "index of the multi-select field itself",
+                      "title": "Index"
+                    },
+                    "texts": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1,
+                      "description": "desired values or real candidate labels already judged equivalent",
+                      "title": "Texts"
+                    },
+                    "replace_existing": {
+                      "type": "boolean",
+                      "description": "True only after ask_user confirmed changing the existing selection",
+                      "title": "Replace Existing"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "texts"
+                  ],
+                  "description": "Choose several options of a multi-select field in one call. If requested wording has no same-name option, the Agent judges equivalent real candidates. The tool selects the chosen options, never removes existing selections, then reads the field back.",
+                  "title": "Select Multiple Options"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fill_application_form": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "intent": {
+                      "type": "string",
+                      "default": "",
+                      "description": "purpose of this action",
+                      "title": "Intent"
+                    }
+                  },
+                  "description": "Call once after reaching the application form. The tool reads the whole form, plans from the profile and resume, adds needed entries, fills fields using confirmed user evidence, verifies each value and repairs failures using page feedback. It returns what is left for you.",
+                  "title": "Fill Application Form"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "title": "Action"
+      }
+    },
+    "required": [
+      "current_state",
+      "action"
+    ],
+    "title": "navigator_output"
+  },
+  "planner_output": {
+    "type": "object",
+    "properties": {
+      "observation": {
+        "type": "string",
+        "title": "Observation"
+      },
+      "challenges": {
+        "type": "string",
+        "title": "Challenges"
+      },
+      "done": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "title": "Done"
+      },
+      "next_steps": {
+        "type": "string",
+        "title": "Next Steps"
+      },
+      "final_answer": {
+        "type": "string",
+        "title": "Final Answer"
+      },
+      "reasoning": {
+        "type": "string",
+        "title": "Reasoning"
+      },
+      "web_task": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "title": "Web Task"
+      }
+    },
+    "required": [
+      "observation",
+      "challenges",
+      "done",
+      "next_steps",
+      "final_answer",
+      "reasoning",
+      "web_task"
+    ],
+    "title": "planner_output"
+  },
+  "application_structure": {
+    "type": "object",
+    "properties": {
+      "sections": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "可重复区块的标题",
+              "title": "Title"
+            },
+            "needed": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "资料和原文中属于该区块的条目数",
+              "title": "Needed"
+            },
+            "existing": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "页面上该区块当前已有的段数（含空段；被勾选项隐藏时为 0）",
+              "title": "Existing"
+            },
+            "add_button": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "该区块自己的添加按钮标识 qN；页面上暂时没有时为 null",
+                  "title": "Add Button"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "add_text": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "添加入口没有 qN、只以文字出现（概览里以 · 开头的行）时，写那行文字；否则 null",
+                  "title": "Add Text"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reveal_toggle": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "隐藏该区块的“没有××/暂无”类勾选项标识 qN；没有时为 null",
+                  "title": "Reveal Toggle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "title",
+            "needed",
+            "existing",
+            "add_button",
+            "add_text",
+            "reveal_toggle"
+          ]
+        },
+        "description": "页面上每个可重复区块各一项",
+        "title": "Sections"
+      }
+    },
+    "required": [
+      "sections"
+    ],
+    "title": "application_structure"
+  },
+  "application_values": {
+    "type": "object",
+    "properties": {
+      "values": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "字段标识 qN",
+              "title": "Id"
+            },
+            "ai_inferred": {
+              "type": "boolean",
+              "description": "是否为推测值；推测值不得写入，必须询问用户。",
+              "title": "Ai Inferred"
+            },
+            "value": {
+              "type": "string",
+              "description": "要填写的值",
+              "title": "Value"
+            },
+            "how": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "type",
+                    "choose",
+                    "choose_many",
+                    "date"
+                  ],
+                  "description": "type 直接输入；choose 从弹出的列表里选一项；choose_many 多选，逐项写在 items；date 用日期面板选；按字段默认方式时为 null",
+                  "title": "How"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "items": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "choose_many 时要选的各个选项（逐字一致）；其他情况为 null",
+                  "title": "Items"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "value",
+            "how",
+            "items"
+          ]
+        },
+        "description": "有用户已确认资料依据且需要写入的字段；缺少依据、推测值或当前值已正确的字段不要列出",
+        "title": "Values"
+      },
+      "ask": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "已观察到的相关字段标识 qN；不得为尚未观察到的字段提问",
+                  "title": "Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "question": {
+              "type": "string",
+              "description": "要问用户的具体问题",
+              "title": "Question"
+            }
+          },
+          "required": [
+            "id",
+            "question"
+          ]
+        },
+        "description": "个人资料缺失、含糊或精度不足的信息，必填与选填都需询问；绑定实际字段，用户已跳过或稍后处理的项不再问",
+        "title": "Ask"
+      }
+    },
+    "required": [
+      "values",
+      "ask"
+    ],
+    "title": "application_values"
+  },
+  "application_repair": {
+    "type": "object",
+    "properties": {
+      "values": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "字段标识 qN",
+              "title": "Id"
+            },
+            "ai_inferred": {
+              "type": "boolean",
+              "description": "是否为推测值；推测值不得写入，必须询问用户。",
+              "title": "Ai Inferred"
+            },
+            "value": {
+              "type": "string",
+              "description": "要填写的值",
+              "title": "Value"
+            },
+            "how": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "type",
+                    "choose",
+                    "choose_many",
+                    "date"
+                  ],
+                  "description": "type 直接输入；choose 从弹出的列表里选一项；choose_many 多选，逐项写在 items；date 用日期面板选；按字段默认方式时为 null",
+                  "title": "How"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "items": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "choose_many 时要选的各个选项（逐字一致）；其他情况为 null",
+                  "title": "Items"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "value",
+            "how",
+            "items"
+          ]
+        },
+        "description": "有用户已确认资料依据且需要写入的字段；缺少依据、推测值或当前值已正确的字段不要列出",
+        "title": "Values"
+      },
+      "ask": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "已观察到的相关字段标识 qN；不得为尚未观察到的字段提问",
+                  "title": "Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "question": {
+              "type": "string",
+              "description": "要问用户的具体问题",
+              "title": "Question"
+            }
+          },
+          "required": [
+            "id",
+            "question"
+          ]
+        },
+        "description": "个人资料缺失、含糊或精度不足的信息，必填与选填都需询问；绑定实际字段，用户已跳过或稍后处理的项不再问",
+        "title": "Ask"
+      }
+    },
+    "required": [
+      "values",
+      "ask"
+    ],
+    "title": "application_repair"
+  },
+  "application_option_choice": {
+    "type": "object",
+    "properties": {
+      "candidate": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 0,
+            "description": "最适合填写的实际候选序号，从 0 开始；没有合适选项或无法判断时为 null",
+            "title": "Candidate"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "description": "简要说明该选项为什么最适合表达用户情况，或还缺什么依据",
+        "title": "Reason"
+      }
+    },
+    "required": [
+      "candidate",
+      "reason"
+    ],
+    "title": "application_option_choice"
+  }
+}
