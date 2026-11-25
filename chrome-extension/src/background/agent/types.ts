@@ -1,3 +1,4 @@
+import type { DecisionClient } from '../decisionClient';
 import { z } from 'zod';
 import { UserInputGate } from './userInput';
 import type BrowserContext from '../browser/context';
@@ -9,6 +10,7 @@ import { Actors, ExecutionState, AgentEvent } from './event/types';
 import { AgentStepHistory } from './history';
 import { FormReview, ReplacementApprovals } from './formReview';
 import { FormRetries } from './formRetries';
+import { ControlExploration } from '../controlExploration';
 
 export interface AgentOptions {
   maxSteps: number;
@@ -25,6 +27,8 @@ export interface AgentOptions {
   targetOrigin?: string;
   /** 本地调试配置开启时，向面板发送各阶段耗时；上线构建不开启。 */
   debug?: boolean;
+  /** 职小搭关联简历的原文件数据，遇到简历上传控件时自动代上传。 */
+  resumeFile?: { fileName: string; mimeType: string; base64: string } | null;
 }
 
 export const DEFAULT_AGENT_OPTIONS: AgentOptions = {
@@ -37,7 +41,7 @@ export const DEFAULT_AGENT_OPTIONS: AgentOptions = {
   useVision: false,
   useVisionForPlanner: true,
   includeAttributes: DEFAULT_INCLUDE_ATTRIBUTES,
-  planningInterval: 3,
+  planningInterval: 0,
 };
 
 export class AgentContext {
@@ -45,7 +49,15 @@ export class AgentContext {
   readonly review = new FormReview();
   readonly replacements = new ReplacementApprovals();
   readonly formRetries = new FormRetries();
+  controlExplorer?: DecisionClient;
+  /** Label of the field that last took over the page, named when its popup blocks the next one. */
+  lastWrittenFieldLabel?: string;
+  readonly controlExploration = new ControlExploration();
+  readonly autoUploadedResumeUrls = new Set<string>();
   completionSuccess: boolean | null = null;
+  pendingPostFillFlow = false;
+  pendingUploadModal = false;
+  lastFullFillMeta: { url: string; hasPreservedConflicts: boolean; hasStructureProblems: boolean } | null = null;
   controller: AbortController;
   taskId: string;
   browserContext: BrowserContext;
@@ -113,9 +125,8 @@ export class AgentContext {
     };
   }
 
-  /** 调试计时：phase 为阶段名，ms 为耗时，detail 为简短补充（动作名、提示长度、错误栈）。 */
+  /** 阶段计时与进度：phase 为阶段名，ms 为耗时，detail 为简短补充（动作名、提示长度、错误栈）。 */
   trace(phase: string, ms: number, detail = ''): void {
-    if (!this.options.debug) return;
     void this.emitEvent(Actors.SYSTEM, ExecutionState.DEBUG_TRACE, JSON.stringify({ phase, ms: Math.round(ms), detail: detail.slice(0, 2000) }));
   }
 
@@ -131,10 +142,12 @@ export class AgentContext {
 
   async pause() {
     this.paused = true;
+    this.controlExploration.setPaused(true);
   }
 
   async resume() {
     this.paused = false;
+    this.controlExploration.setPaused(false);
   }
 
   async stop() {

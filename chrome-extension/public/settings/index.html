@@ -1,11 +1,62 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>简历与模型 · 职小搭</title><link rel="stylesheet" href="settings.css"></head>
-<body><main><header><img src="../icon-32.png" width="32" height="32" alt=""><span>职小搭 · 网申助手</span></header><h1>简历与模型</h1>
-<form id="settings"><fieldset><legend>申请资料</legend><label for="file">导入简历</label><input type="file" id="file" accept=".pdf,.docx,.txt,.md">
-<p>支持文字版 PDF、DOCX、UTF-8 文本和 Markdown，也可以直接粘贴。请核对下方提取的正文，模型将按这份资料填写。</p>
-<label for="resume">简历正文</label><textarea id="resume" rows="11" maxlength="80000" required></textarea></fieldset>
-<fieldset><legend>模型 API</legend><label for="base">API Base URL</label><input id="base" type="url" placeholder="https://api.example.com/v1" required>
-<label for="model">模型名称</label><input id="model" placeholder="服务商提供的模型 ID" required>
-<label for="key">API Key</label><input id="key" type="password" autocomplete="off"><p>使用支持工具调用的 Chat Completions 兼容接口。本地免鉴权模型可留空密钥。</p></fieldset>
-<p>资料与密钥保存在此浏览器。点击「开始自动填写」后，扩展会把简历、当前表单和本轮回答发送到你配置的模型地址。</p>
-<div class="actions"><button id="save">保存设置</button><button id="clear" type="button">清除本地资料与进度</button></div><p id="status" role="status" aria-live="polite"></p>
-</form></main><script type="module" src="settings.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>简历与模型 · 职小搭</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main>
+    <header class="page-heading">
+      <img src="../icon-128.png" alt="" width="54" height="54">
+      <div>
+        <p class="brand">职小搭 · 网申助手</p>
+        <h1>简历与模型设置</h1>
+      </div>
+    </header>
+
+    <form id="settings">
+      <section class="card" aria-labelledby="resume-title">
+        <h2 id="resume-title">申请资料</h2>
+        <div class="dropzone" id="dropzone">
+          <input class="file-input" type="file" id="file" accept=".pdf,.docx,.txt,.md" aria-describedby="file-hint">
+          <label for="file">
+            <span class="upload-icon" aria-hidden="true">↑</span>
+            <span><strong>拖入简历或点击选择文件</strong>
+              <span id="file-hint">文字版 PDF、DOCX、TXT、Markdown · 最大 10 MB</span>
+            </span>
+          </label>
+        </div>
+        <div id="attachment" class="attachment" hidden>
+          <span class="file-pill" id="attachment-name"></span>
+          <label class="checkbox"><input type="checkbox" id="auto-upload" checked> 在招聘页自动上传原件</label>
+          <button type="button" id="remove-attachment" class="text-button">移除原件</button>
+        </div>
+        <label for="resume" class="field-label">简历正文</label>
+        <textarea id="resume" rows="8" maxlength="80000" required placeholder="请核对导入的正文，也可以直接粘贴和编辑。"></textarea>
+      </section>
+
+      <section class="card" aria-labelledby="model-title">
+        <h2 id="model-title">模型 API</h2>
+        <p class="hint">使用支持工具调用的 OpenAI 兼容接口。可填写服务商的 HTTPS 地址，或本机模型地址如 <code>http://localhost:11434/v1</code>。</p>
+        <div class="model-grid">
+          <label for="base">API Base URL<input id="base" type="url" placeholder="https://api.example.com/v1" required></label>
+          <label for="model">模型名称<input id="model" placeholder="服务商提供的模型 ID" required></label>
+          <label for="key">API Key<input id="key" type="password" autocomplete="off" placeholder="本机免鉴权接口可留空"></label>
+          <button type="button" id="test-model" class="secondary">测试模型连接</button>
+        </div>
+        <p id="model-status" class="status" role="status" hidden></p>
+      </section>
+
+      <p class="privacy">设置保存在此浏览器。填写时，扩展会把已确认的简历正文、相关页面信息和本轮回答发送到你配置的模型 API。特殊控件可能会用到局部截图。</p>
+      <div class="actions">
+        <button type="submit" id="save" class="primary">保存设置</button>
+        <button type="button" id="clear" class="text-button danger">清除全部本地数据</button>
+      </div>
+      <p id="status" class="status" role="status" hidden></p>
+    </form>
+  </main>
+  <script type="module" src="settings.js"></script>
+</body>
+</html>

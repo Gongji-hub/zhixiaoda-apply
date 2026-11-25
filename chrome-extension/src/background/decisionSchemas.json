@@ -306,32 +306,6 @@
                 }
               ]
             },
-            "cache_content": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "intent": {
-                      "type": "string",
-                      "default": "",
-                      "description": "purpose of this action",
-                      "title": "Intent"
-                    },
-                    "content": {
-                      "type": "string",
-                      "default": "",
-                      "description": "content to cache",
-                      "title": "Content"
-                    }
-                  },
-                  "description": "Cache what you have found so far from the current page for future use",
-                  "title": "Cache Content"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
             "scroll_to_percent": {
               "anyOf": [
                 {
@@ -366,169 +340,6 @@
                   ],
                   "description": "Scrolls to a particular vertical percentage of the document or an element. If no index of element is specified, scroll the whole document.",
                   "title": "Scroll To Percent"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "scroll_to_top": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "intent": {
-                      "type": "string",
-                      "default": "",
-                      "description": "purpose of this action",
-                      "title": "Intent"
-                    },
-                    "index": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "description": "index of the element",
-                          "title": "Index"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "description": "Scroll the document in the window or an element to the top",
-                  "title": "Scroll To Top"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "scroll_to_bottom": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "intent": {
-                      "type": "string",
-                      "default": "",
-                      "description": "purpose of this action",
-                      "title": "Intent"
-                    },
-                    "index": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "description": "index of the element",
-                          "title": "Index"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "description": "Scroll the document in the window or an element to the bottom",
-                  "title": "Scroll To Bottom"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "previous_page": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "intent": {
-                      "type": "string",
-                      "default": "",
-                      "description": "purpose of this action",
-                      "title": "Intent"
-                    },
-                    "index": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "description": "index of the element",
-                          "title": "Index"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "description": "Scroll the document in the window or an element to the previous page. If no index is specified, scroll the whole document.",
-                  "title": "Previous Page"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "next_page": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "intent": {
-                      "type": "string",
-                      "default": "",
-                      "description": "purpose of this action",
-                      "title": "Intent"
-                    },
-                    "index": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "description": "index of the element",
-                          "title": "Index"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "description": "Scroll the document in the window or an element to the next page. If no index is specified, scroll the whole document.",
-                  "title": "Next Page"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "scroll_to_text": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "intent": {
-                      "type": "string",
-                      "default": "",
-                      "description": "purpose of this action",
-                      "title": "Intent"
-                    },
-                    "text": {
-                      "type": "string",
-                      "description": "text to scroll to",
-                      "title": "Text"
-                    },
-                    "nth": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "default": 1,
-                      "description": "which occurrence of the text to scroll to (1-indexed, default: 1)",
-                      "title": "Nth"
-                    }
-                  },
-                  "required": [
-                    "text"
-                  ],
-                  "description": "If you dont find something which you want to interact with in current viewport, try to scroll to it",
-                  "title": "Scroll To Text"
                 },
                 {
                   "type": "null"
@@ -895,7 +706,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "description": "添加入口没有 qN、只以文字出现（概览里以 · 开头的行）时，写那行文字；否则 null",
+                  "description": "添加入口没有 qN、只以文字出现时，写网页上的按钮文字，去掉概览行首用于排版的 ·；否则 null",
                   "title": "Add Text"
                 },
                 {
@@ -914,6 +725,36 @@
                   "type": "null"
                 }
               ]
+            },
+            "optional_rows": {
+              "type": "boolean",
+              "description": "整个区块可以合法地留 0 段且通过添加入口展开可删除的独立行时为 true。教育、工作、项目等应按资料正常展开的核心经历，以及网页上固定的独立字段，为 false。"
+            },
+            "row_evidence": {
+              "type": "array",
+              "description": "选填区块的候选资料线索。只返回有资料原文的条目，供执行阶段和实际控件匹配。",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "description": "候选的称呼，例如平台、证书或语言名称"
+                  },
+                  "source": {
+                    "type": "string",
+                    "description": "从用户资料逐字引用的候选值，即使暂不清楚网页能否填完也可保留"
+                  }
+                },
+                "required": [
+                  "label",
+                  "source"
+                ]
+              }
+            },
+            "empty_confirmed": {
+              "type": "boolean",
+              "description": "当 needed=0 时，资料与原文是否已明确确认无该类经历（所有相关经历性质均已明确且该区块确为 0 段时为 true；存在未标注性质的工作经历导致分栏归属不明时为 false）",
+              "title": "Empty Confirmed"
             }
           },
           "required": [
@@ -1164,6 +1005,23 @@
         "type": "string",
         "description": "简要说明该选项为什么最适合表达用户情况，或还缺什么依据",
         "title": "Reason"
+      },
+      "needs_information": {
+        "type": "boolean",
+        "default": false,
+        "title": "Needs Information"
+      },
+      "unexpressed_detail": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "当选中的候选是“其他”或粗粒度分类、尚未完整表达原资料中的具体事实时，填写尚未表达的原始具体信息；已完整表达或 candidate 为 null 时为 null",
+            "title": "Unexpressed Detail"
+          },
+          {
+            "type": "null"
+          }
+        ]
       }
     },
     "required": [
@@ -1171,5 +1029,261 @@
       "reason"
     ],
     "title": "application_option_choice"
+  },
+  "application_form_audit": {
+    "type": "object",
+    "properties": {
+      "reviewed_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "title": "Reviewed Ids"
+      },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "anchor": {
+              "type": "string",
+              "title": "Anchor"
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "title": "Label"
+            },
+            "required": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Required"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "missing",
+                "invalid",
+                "uncertain"
+              ],
+              "title": "Status"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 400,
+              "title": "Reason"
+            },
+            "evidence": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300,
+              "title": "Evidence"
+            }
+          },
+          "required": [
+            "anchor",
+            "label",
+            "required",
+            "status",
+            "reason",
+            "evidence"
+          ]
+        },
+        "maxItems": 80,
+        "title": "Findings"
+      },
+      "unverifiable": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "maxItems": 20,
+        "title": "Unverifiable"
+      }
+    },
+    "required": [
+      "reviewed_ids",
+      "findings",
+      "unverifiable"
+    ],
+    "title": "application_form_audit"
+  },
+  "application_control_targets": {
+    "type": "object",
+    "properties": {
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "anchor": {
+              "type": "string",
+              "title": "Anchor"
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "title": "Label"
+            },
+            "required": {
+              "anyOf": [
+                {
+                  "type": "boolean",
+                  "title": "Required"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "desired_value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "title": "Desired Value"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source_quote": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 800,
+                  "title": "Source Quote"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "ai_inferred": {
+              "type": "boolean",
+              "title": "Ai Inferred"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 400,
+              "title": "Reason"
+            }
+          },
+          "required": [
+            "anchor",
+            "label",
+            "required",
+            "desired_value",
+            "source_quote",
+            "ai_inferred",
+            "reason"
+          ]
+        },
+        "maxItems": 12,
+        "title": "Fields"
+      }
+    },
+    "required": [
+      "fields"
+    ],
+    "title": "application_control_targets"
+  },
+  "application_control_step": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "click",
+          "type",
+          "scroll",
+          "done",
+          "manual"
+        ],
+        "title": "Action"
+      },
+      "target": {
+        "anyOf": [
+          {
+            "type": "string",
+            "title": "Target"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "value": {
+        "anyOf": [
+          {
+            "type": "string",
+            "title": "Value"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "title": "Reason"
+      }
+    },
+    "required": [
+      "action",
+      "target",
+      "value",
+      "reason"
+    ],
+    "title": "application_control_step"
+  },
+  "application_value_equivalence": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "equivalent": {
+              "type": "boolean",
+              "title": "Equivalent"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 200,
+              "title": "Reason"
+            }
+          },
+          "required": [
+            "id",
+            "equivalent",
+            "reason"
+          ]
+        },
+        "maxItems": 40,
+        "title": "Items"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "title": "application_value_equivalence"
   }
 }

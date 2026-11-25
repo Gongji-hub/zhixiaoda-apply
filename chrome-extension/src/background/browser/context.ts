@@ -12,14 +12,40 @@ import { isUrlAllowed } from './util';
 import { analytics } from '../services/analytics';
 
 const logger = createLogger('BrowserContext');
+
+function siteRoot(hostname: string): string {
+  const parts = hostname.toLowerCase().split('.').filter(Boolean);
+  if (parts.length <= 2) return parts.join('.');
+  const twoPartTld = /^(?:com|net|org|gov|edu|co)\.[a-z]{2}$/.test(parts.slice(-2).join('.'));
+  return parts.slice(twoPartTld ? -3 : -2).join('.');
+}
+
+function sameApplySite(url: URL, targetOrigin?: string): boolean {
+  if (url.protocol !== 'https:' || !targetOrigin) return false;
+  if (url.origin === targetOrigin) return true;
+  try {
+    const targetHost = new URL(targetOrigin).hostname.toLowerCase();
+    return (
+      siteRoot(url.hostname) === siteRoot(targetHost) ||
+      decodeURIComponent(url.search).toLowerCase().includes(targetHost)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default class BrowserContext {
   private _config: BrowserContextConfig;
   private _currentTabId: number | null = null;
   public onApplyTargetChanged?: (tabId: number) => Promise<void>;
   private _attachedPages: Map<number, Page> = new Map();
+  private _relatedTabIds: Set<number> = new Set();
+  private _rootOrigin?: string;
 
   constructor(config: Partial<BrowserContextConfig>) {
     this._config = { ...DEFAULT_BROWSER_CONTEXT_CONFIG, ...config };
+    if (config.applyTargetTabId !== undefined) this._relatedTabIds.add(config.applyTargetTabId);
+    if (config.applyTargetOrigin) this._rootOrigin = config.applyTargetOrigin;
   }
 
   public getConfig(): BrowserContextConfig {
@@ -28,6 +54,8 @@ export default class BrowserContext {
 
   public updateConfig(config: Partial<BrowserContextConfig>): void {
     this._config = { ...this._config, ...config };
+    if (config.applyTargetTabId !== undefined) this._relatedTabIds.add(config.applyTargetTabId);
+    if (config.applyTargetOrigin && !this._rootOrigin) this._rootOrigin = config.applyTargetOrigin;
     // 页面创建时复制了配置；不同步的话，任务开始后才设的整页观察等设置对已打开的页面不生效。
     for (const page of this._attachedPages.values()) page.updateConfig(config);
   }
@@ -53,7 +81,13 @@ export default class BrowserContext {
       this._attachedPages.delete(tab.id);
     }
     logger.info('getOrCreatePage', tab.id, 'creating new page');
-    return new Page(tab.id, tab.url || '', tab.title || '', this._config);
+    const page = new Page(tab.id, tab.url || '', tab.title || '', this._config);
+    page.onApplyOriginChanged = async origin => {
+      if (this._config.applyTargetOrigin === origin) return;
+      this.updateConfig({ applyTargetOrigin: origin });
+      await this.onApplyTargetChanged?.(tab.id!);
+    };
+    return page;
   }
 
   public async cleanup(): Promise<void> {
@@ -64,6 +98,8 @@ export default class BrowserContext {
     }
     this._attachedPages.clear();
     this._currentTabId = null;
+    this._relatedTabIds.clear();
+    this._rootOrigin = undefined;
   }
 
   public async attachPage(page: Page): Promise<boolean> {
@@ -92,23 +128,64 @@ export default class BrowserContext {
     }
   }
 
-  /** Follow an active direct child of the selected page, never an unrelated active tab. */
-  private async reconcileApplyTarget(): Promise<void> {
+  /** Follow an active related tab on the target site, never an unrelated active tab. */
+  public async reconcileApplyTarget(allowSameSiteActive = false): Promise<void> {
     const targetId = this._config.applyTargetTabId;
     if (!targetId) return;
+    this._relatedTabIds.add(targetId);
     const tabs = await chrome.tabs.query({ windowId: this._config.applyTargetWindowId });
-    const parent = tabs.find(tab => tab.id === targetId);
-    const children = tabs.filter(tab => {
-      if (tab.openerTabId !== targetId || !tab.id || !tab.url) return false;
-      try { return new URL(tab.url).origin === this._config.applyTargetOrigin; } catch { return false; }
+    const matchesSite = (urlStr?: string) => {
+      if (!urlStr) return false;
+      try {
+        const url = new URL(urlStr);
+        return (
+          sameApplySite(url, this._config.applyTargetOrigin) ||
+          (this._rootOrigin ? sameApplySite(url, this._rootOrigin) : false)
+        );
+      } catch {
+        return false;
+      }
+    };
+    let added = true;
+    while (added) {
+      added = false;
+      for (const tab of tabs) {
+        const tabUrl = tab.url || (tab as { pendingUrl?: string }).pendingUrl;
+        if (
+          tab.id !== undefined &&
+          !this._relatedTabIds.has(tab.id) &&
+          ((tab.openerTabId !== undefined && this._relatedTabIds.has(tab.openerTabId)) ||
+            (allowSameSiteActive && tab.active)) &&
+          matchesSite(tabUrl)
+        ) {
+          this._relatedTabIds.add(tab.id);
+          added = true;
+        }
+      }
+    }
+    const relatedTabs = tabs.filter(tab => {
+      const tabUrl = tab.url || (tab as { pendingUrl?: string }).pendingUrl;
+      return tab.id !== undefined && this._relatedTabIds.has(tab.id) && matchesSite(tabUrl);
     });
-    const activeChildren = children.filter(tab => tab.active);
-    const child = activeChildren.length === 1 ? activeChildren[0] :
-      !parent && children.length === 1 ? children[0] : undefined;
-    if (child?.id) {
-      this.updateConfig({ applyTargetTabId: child.id });
-      this._currentTabId = child.id;
-      await this.onApplyTargetChanged?.(child.id);
+    const parent = tabs.find(tab => tab.id === targetId);
+    const activeRelated = relatedTabs.filter(tab => tab.active);
+    const nextTarget =
+      activeRelated.length === 1
+        ? activeRelated[0]
+        : parent
+          ? parent
+          : relatedTabs.length >= 1
+            ? relatedTabs[relatedTabs.length - 1]
+            : undefined;
+    if (nextTarget?.id) {
+      const nextUrl = nextTarget.url || (nextTarget as { pendingUrl?: string }).pendingUrl;
+      const nextOrigin = nextUrl ? new URL(nextUrl).origin : this._config.applyTargetOrigin!;
+      const changed = nextTarget.id !== targetId || nextOrigin !== this._config.applyTargetOrigin;
+      this.updateConfig({ applyTargetTabId: nextTarget.id, applyTargetOrigin: nextOrigin });
+      this._currentTabId = nextTarget.id;
+      if (changed) {
+        await this.onApplyTargetChanged?.(nextTarget.id);
+      }
     } else if (parent) {
       this._currentTabId = targetId;
     } else {
@@ -119,9 +196,16 @@ export default class BrowserContext {
   public async assertApplyTarget(tabId: number): Promise<void> {
     const tab = await chrome.tabs.get(tabId);
     let origin = '';
-    try { origin = new URL(tab.url || '').origin; } catch { /* Incomplete navigation. */ }
-    if (tabId !== this._config.applyTargetTabId || origin !== this._config.applyTargetOrigin) {
+    try {
+      const url = new URL(tab.url || '');
+      if (url.protocol === 'https:') origin = url.origin;
+    } catch { /* Incomplete navigation. */ }
+    if (tabId !== this._config.applyTargetTabId || !origin) {
       throw new URLNotAllowedError('目标页面发生变化，已停止自动操作。请检查当前网站后继续。');
+    }
+    if (origin !== this._config.applyTargetOrigin) {
+      this.updateConfig({ applyTargetOrigin: origin });
+      await this.onApplyTargetChanged?.(tabId);
     }
   }
 

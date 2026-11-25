@@ -2,10 +2,12 @@ import type { FormFieldReference } from './formReview';
 
 export interface UserQuestion {
   kind?: 'information' | 'manual_action';
+  blockingDialog?: boolean;
   id: string;
   question: string;
   reason: string;
   options: string[];
+  multiple?: boolean;
   field?: FormFieldReference;
   replacement?: { currentValue: string; proposedValue: string; tabId: number };
   replacements?: { field: FormFieldReference; currentValue: string; proposedValue: string; tabId: number }[];
@@ -15,6 +17,15 @@ export interface UserAnswer {
   /** defer：用户稍后亲自处理这一项（补填或网页操作），记为待办，本轮继续处理其余内容。 */
   decision: 'answer' | 'skip' | 'confirm_replace' | 'defer';
   text: string;
+  selectedOptions?: string[];
+}
+
+/** The page resolved a blocking condition; this is not a user answer or approval. */
+export class UserQuestionWithdrawn extends Error {
+  constructor() {
+    super('网页状态已改变，撤回等待提示');
+    this.name = 'UserQuestionWithdrawn';
+  }
 }
 
 /** One question at a time. An unanswered question blocks the action, not a polling loop. */
@@ -23,6 +34,7 @@ export class UserInputGate {
   interrupted: UserQuestion | null = null;
   onAccepted?: (question: UserQuestion, answer: UserAnswer) => void;
   private settle: ((answer: UserAnswer) => void) | null = null;
+  private withdrawPending: (() => void) | null = null;
 
   async ask(
     question: Omit<UserQuestion, 'id'>,
@@ -36,8 +48,11 @@ export class UserInputGate {
     return new Promise<UserAnswer>((resolve, reject) => {
       const clear = () => {
         signal.removeEventListener('abort', abort);
-        this.pending = null;
-        this.settle = null;
+        if (this.pending === pending) {
+          this.pending = null;
+          this.settle = null;
+          this.withdrawPending = null;
+        }
       };
       const abort = () => {
         this.interrupted = pending;
@@ -49,12 +64,23 @@ export class UserInputGate {
         clear();
         resolve(answer);
       };
+      this.withdrawPending = () => {
+        this.interrupted = null;
+        clear();
+        reject(new UserQuestionWithdrawn());
+      };
       signal.addEventListener('abort', abort, { once: true });
       publish(pending).catch(error => {
         clear();
         reject(error);
       });
     });
+  }
+
+  withdraw(questionId: string): boolean {
+    if (this.pending?.id !== questionId || !this.withdrawPending) return false;
+    this.withdrawPending();
+    return true;
   }
 
   answer(answer: UserAnswer): boolean {
@@ -68,7 +94,16 @@ export class UserInputGate {
       return false;
     if ((answer.decision === 'confirm_replace') !== Boolean(this.pending.replacement) && !['skip', 'defer'].includes(answer.decision))
       return false;
-    const accepted = { ...answer, text: answer.text.trim() };
+    let text = answer.text.trim();
+    if (answer.decision === 'answer' && this.pending.kind !== 'manual_action' && this.pending.options.length) {
+      if (this.pending.multiple) {
+        if (!Array.isArray(answer.selectedOptions) || !answer.selectedOptions.length ||
+          new Set(answer.selectedOptions).size !== answer.selectedOptions.length ||
+          answer.selectedOptions.some(option => !this.pending!.options.includes(option))) return false;
+        text = answer.selectedOptions.join('、');
+      } else if (!this.pending.options.includes(text)) return false;
+    }
+    const accepted = { ...answer, text };
     this.onAccepted?.(this.pending, accepted);
     this.settle(accepted);
     return true;

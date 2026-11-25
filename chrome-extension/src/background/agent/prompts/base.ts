@@ -79,6 +79,9 @@ abstract class BasePrompt {
     const otherTabs = browserState.tabs
       .filter(tab => tab.id !== browserState.tabId)
       .map(tab => `- {id: ${tab.id}, url: ${tab.url}, title: ${tab.title}}`);
+    const applicationBoundaryNote = context.options.targetOrigin
+      ? '[Application boundary rule] If the page is on a pre-form step that requires candidate preference decisions or consumes application quota—such as selecting a business group/department dialog (e.g., "请选择意向部门"), an intention cart drawer ("意向单"), or a pre-form intention/city/adjustment confirmation page ("1. 意向选择", "可调剂工作城市", "确认意向并投递") before reaching the actual resume form ("简历填写")—do NOT guess choices or repeatedly click modal buttons; immediately call ask_user(kind="manual_action") to ask the user to complete their selection on the webpage and enter the resume form, then click continue.\n'
+      : '';
     const stateDescription = `
 [Task history memory ends]
 [Current state starts here]
@@ -86,7 +89,7 @@ The following is one-time information - if you need to remember it write it to m
 Current tab: ${currentTab}
 Other available tabs:
   ${otherTabs.join('\n')}
-Interactive elements from the current page observation (application tasks include the loaded full-page DOM; collapsed or lazy-loaded controls may require interaction):
+${applicationBoundaryNote}Interactive elements from the current page observation (application tasks include the loaded full-page DOM; collapsed or lazy-loaded controls may require interaction):
 ${formChanges}
 ${formattedElementsText}
 ${stepInfoDescription}

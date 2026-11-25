@@ -4,7 +4,7 @@ export interface ApplicationPauseState {
   manual: boolean;
 }
 
-/** Manual intent survives tab changes. Window focus alone does not mean the page is hidden. */
+/** Keep the application tab visible in its own window, even while another window has focus. */
 export class ApplicationForeground {
   private tabId: number | null = null;
   private windowId: number | null = null;
@@ -18,11 +18,8 @@ export class ApplicationForeground {
       if (this.tabId === null) return;
       if (this.windowId === null) { void this.refresh(); return; }
       if (info.windowId !== this.windowId) return;
-      if (info.tabId !== this.tabId) {
-        ++this.revision;
-        this.background = true;
-        this.publish();
-      } else void this.refresh();
+      if (info.tabId !== this.tabId) this.pauseInBackground();
+      else void this.refresh();
     });
     chrome.windows.onBoundsChanged.addListener(window => {
       if (this.tabId !== null && (this.windowId === null || window.id === this.windowId)) void this.refresh();
@@ -44,8 +41,8 @@ export class ApplicationForeground {
 
   async move(tabId: number) {
     this.tabId = tabId;
-    this.background = true;
-    this.publish();
+    this.windowId = null;
+    this.pauseInBackground();
     await this.refresh();
   }
 
@@ -99,6 +96,12 @@ export class ApplicationForeground {
     this.manual = false;
     this.background = false;
     this.last = '';
+  }
+
+  private pauseInBackground() {
+    ++this.revision;
+    this.background = true;
+    this.publish();
   }
 
   private publish() {

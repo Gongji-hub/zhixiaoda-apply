@@ -10,7 +10,7 @@ export function applicationProgressKey(state: BrowserState): string {
       return;
     }
     if (!(node instanceof DOMElementNode)) return;
-    if (['qz-agent-feedback', 'qz-agent-field-focus', 'playwright-highlight-container'].includes(node.attributes.id)) return;
+    if (['qz-agent-feedback', 'qz-agent-viewport-glow', 'qz-agent-field-focus', 'playwright-highlight-container'].includes(node.attributes.id)) return;
     if (node.isVisible) rows.push([node.tagName, node.xpath,
       ['id', 'name', 'type', 'role', 'value', 'checked', 'disabled', 'required', 'href',
         'aria-invalid', 'aria-expanded', 'aria-checked', 'aria-selected', 'aria-valuetext', 'aria-busy']

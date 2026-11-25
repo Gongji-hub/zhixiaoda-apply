@@ -1,46 +1,39 @@
-import { z } from 'zod';
-import { BaseAgent, type BaseAgentOptions, type ExtraAgentOptions } from './base';
-import { createLogger } from '@src/background/log';
-import { ActionResult, type AgentOutput } from '../types';
-import type { Action } from '../actions/builder';
-import { buildDynamicActionSchema } from '../actions/builder';
-import { agentBrainSchema } from '../types';
 import { HumanMessage } from '@langchain/core/messages';
-import { Actors, ExecutionState } from '../event/types';
-import {
-  ChatModelAuthError,
-  ChatModelBadRequestError,
-  ChatModelForbiddenError,
-  EXTENSION_CONFLICT_ERROR_MESSAGE,
-  ExtensionConflictError,
-  isAbortedError,
-  isAuthenticationError,
-  isBadRequestError,
-  isExtensionConflictError,
-  isForbiddenError,
-  ResponseParseError,
-  LLM_FORBIDDEN_ERROR_MESSAGE,
-  RequestCancelledError,
-} from './errors';
-import { formStructureKey, isPlainFormInput } from '../actions/formBatch';
-import { applicationProgressKey, applicationActionKey } from '../actions/progress';
-import { describeAgentFailure } from '../failureDetails';
+import { HistoryTreeProcessor } from '@src/background/browser/dom/history/service';
+import { type DOMHistoryElement } from '@src/background/browser/dom/history/view';
 import { calcBranchPathHashSet } from '@src/background/browser/dom/views';
 import { type BrowserState, BrowserStateHistory, URLNotAllowedError } from '@src/background/browser/views';
+import { createLogger } from '@src/background/log';
 import { repairJsonString } from '@src/background/utils';
-import { HistoryTreeProcessor } from '@src/background/browser/dom/history/service';
+import { z } from 'zod';
+import type { Action } from '../actions/builder';
+import { buildDynamicActionSchema } from '../actions/builder';
+import { formStructureKey, isPlainFormInput } from '../actions/formBatch';
+import { applicationActionKey, applicationProgressKey } from '../actions/progress';
+import { Actors, ExecutionState } from '../event/types';
+import { describeAgentFailure } from '../failureDetails';
+import { collectOutline } from '../formPlan/outline';
 import { AgentStepRecord } from '../history';
-import { type DOMHistoryElement } from '@src/background/browser/dom/history/view';
+import { ActionResult, agentBrainSchema, type AgentOutput } from '../types';
+import { BaseAgent, type BaseAgentOptions, type ExtraAgentOptions } from './base';
+import {
+    ChatModelAuthError,
+    ChatModelBadRequestError,
+    ChatModelForbiddenError,
+    EXTENSION_CONFLICT_ERROR_MESSAGE,
+    ExtensionConflictError,
+    isAbortedError,
+    isAuthenticationError,
+    isBadRequestError,
+    isExtensionConflictError,
+    isForbiddenError,
+    LLM_FORBIDDEN_ERROR_MESSAGE,
+    RequestCancelledError,
+    ResponseParseError,
+} from './errors';
+import { replayHistoryStep, updateActionIndices } from './navigatorHistory';
 
 const logger = createLogger('NavigatorAgent');
-
-interface ParsedModelOutput {
-  current_state?: {
-    next_goal?: string;
-  };
-  action?: (Record<string, unknown> | null)[] | null;
-}
-
 export class NavigatorActionRegistry {
   private actions: Record<string, Action> = {};
 
@@ -90,7 +83,6 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     super(actionRegistry.setupModelOutputSchema(), options, { ...extraOptions, id: 'navigator' });
 
     this.actionRegistry = actionRegistry;
-
   }
 
   async execute(): Promise<AgentOutput<NavigatorResult>> {
@@ -119,7 +111,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       browserStateHistory = new BrowserStateHistory(currentState);
 
       // check if the task is paused or stopped
-      if (this.context.paused || this.context.stopped) {
+      if (this.context.stopped || (this.context.paused && actionResults.length === 0)) {
         cancelled = true;
         return agentOutput;
       }
@@ -130,12 +122,20 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       started = Date.now();
       const modelOutput = await this.invoke(inputMessages);
-      const promptChars = inputMessages.reduce((sum, message) => sum + (typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length), 0);
+      const promptChars = inputMessages.reduce(
+        (sum, message) =>
+          sum + (typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length),
+        0,
+      );
       const goal = modelOutput?.current_state?.next_goal;
-      this.context.trace?.('模型决策', Date.now() - started, `页面与历史约 ${promptChars} 字符${goal ? `\n打算：${goal}` : ''}`);
+      this.context.trace?.(
+        '模型决策',
+        Date.now() - started,
+        `页面与历史约 ${promptChars} 字符${goal ? `\n打算：${goal}` : ''}`,
+      );
 
       // check if the task is paused or stopped
-      if (this.context.paused || this.context.stopped) {
+      if (this.context.stopped || (this.context.paused && actionResults.length === 0)) {
         cancelled = true;
         return agentOutput;
       }
@@ -143,7 +143,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       const actions = this.fixActions(modelOutput);
       if (!actions.length) {
         const raw = JSON.stringify(modelOutput);
-        this.context.trace?.('模型未给动作', 0, `字段：${Object.keys(modelOutput ?? {}).join(', ')} · 末尾：${raw.slice(-300)}`);
+        this.context.trace?.(
+          '模型未给动作',
+          0,
+          `字段：${Object.keys(modelOutput ?? {}).join(', ')} · 末尾：${raw.slice(-300)}`,
+        );
         throw new ResponseParseError('模型未返回可执行动作；请依据当前观察选择工具，完成时显式调用 done。');
       }
       modelOutput.action = actions;
@@ -156,13 +160,17 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       // take the actions
       started = Date.now();
       actionResults = await this.doMultiAction(actions);
-      this.context.trace?.('本步动作合计', Date.now() - started, actions.map(action => Object.keys(action)[0]).join(', '));
+      this.context.trace?.(
+        '本步动作合计',
+        Date.now() - started,
+        actions.map(action => Object.keys(action)[0]).join(', '),
+      );
       // logger.info('Action results', JSON.stringify(actionResults, null, 2));
 
       this.context.actionResults = actionResults;
 
       // check if the task is paused or stopped
-      if (this.context.paused || this.context.stopped) {
+      if (this.context.stopped || (this.context.paused && actionResults.length === 0)) {
         cancelled = true;
         return agentOutput;
       }
@@ -238,6 +246,117 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
         // logger.info('All history', JSON.stringify(this.context.history, null, 2));
       }
+    }
+  }
+
+  /** 首屏已在网申表单页时直接执行整页填写，省去首轮 Planner 与 Navigator 空转。 */
+  async executeInitialFormFill(): Promise<AgentOutput<NavigatorResult> | null> {
+    if (
+      Object.prototype.hasOwnProperty.call(this, 'invoke') ||
+      !this.actionRegistry.getAction('fill_application_form')
+    ) {
+      return null;
+    }
+
+    const started = Date.now();
+    const currentState = await this.context.browserContext.getState(this.context.options.useVision);
+    const raw = collectOutline(currentState.elementTree);
+    const fieldCount = raw.filter(item => item.kind === 'field').length;
+    const hasPasswordInput = [...(currentState.selectorMap?.values() ?? [])].some(
+      node =>
+        (node.tagName ?? '').toLowerCase() === 'input' && (node.attributes.type ?? '').toLowerCase() === 'password',
+    );
+    if (fieldCount < 2 || (hasPasswordInput && fieldCount <= 4)) {
+      return null;
+    }
+
+    const agentOutput: AgentOutput<NavigatorResult> = { id: this.id };
+    let cancelled = false;
+    let modelOutputString: string | null = null;
+    const browserStateHistory = new BrowserStateHistory(currentState);
+    let actionResults: ActionResult[] = [];
+
+    try {
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_START, 'Navigating...');
+      this.context.trace?.('观察页面', Date.now() - started, `首屏检测到 ${fieldCount} 个表单字段，直接进入整页填写`);
+
+      if (this.context.stopped || this.context.paused) {
+        cancelled = true;
+        return agentOutput;
+      }
+
+      const actions = [{ fill_application_form: { intent: '整页读取并填写当前表单' } }];
+      const modelOutput = {
+        current_state: {
+          evaluation_previous_goal: 'Unknown - Initial form observation',
+          memory: `当前页面检测到 ${fieldCount} 个表单字段，直接执行整页填写。`,
+          next_goal: '整页读取并填写当前表单',
+        },
+        action: actions,
+      };
+      modelOutputString = JSON.stringify(modelOutput);
+      this.addModelOutputToMemory(modelOutput);
+
+      const actionStarted = Date.now();
+      actionResults = await this.doMultiAction(actions);
+      this.context.trace?.('本步动作合计', Date.now() - actionStarted, 'fill_application_form');
+      this.context.actionResults = actionResults;
+
+      if (this.context.stopped || (this.context.paused && actionResults.length === 0)) {
+        cancelled = true;
+        return agentOutput;
+      }
+
+      const actionError = actionResults.find(result => result.error && !result.fieldFailure)?.error;
+      if (actionError) {
+        this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_FAIL, actionError);
+        agentOutput.error = actionError;
+        return agentOutput;
+      }
+
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_OK, 'Navigation done');
+      agentOutput.result = { done: false };
+      return agentOutput;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.context.trace?.('步骤出错', 0, error instanceof Error ? error.stack || error.message : String(error));
+      if (isAuthenticationError(error)) {
+        throw new ChatModelAuthError(errorMessage, error);
+      } else if (isBadRequestError(error)) {
+        throw new ChatModelBadRequestError(errorMessage, error);
+      } else if (isAbortedError(error)) {
+        throw new RequestCancelledError(errorMessage);
+      } else if (isExtensionConflictError(error)) {
+        throw new ExtensionConflictError(EXTENSION_CONFLICT_ERROR_MESSAGE, error);
+      } else if (isForbiddenError(error)) {
+        throw new ChatModelForbiddenError(LLM_FORBIDDEN_ERROR_MESSAGE, error);
+      } else if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
+
+      logger.error(`Navigation failed: ${errorMessage}`);
+      this.context.actionResults = [
+        new ActionResult({ error: describeAgentFailure('执行失败', error), includeInMemory: true }),
+      ];
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_FAIL, describeAgentFailure('执行失败', error));
+      agentOutput.error = errorMessage;
+      return agentOutput;
+    } finally {
+      if (cancelled) {
+        this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_CANCEL, 'Navigation cancelled');
+      }
+      const actionResultsCopy = actionResults.map(
+        result =>
+          new ActionResult({
+            isDone: result.isDone,
+            success: result.success,
+            extractedContent: result.extractedContent,
+            error: result.error,
+            includeInMemory: result.includeInMemory,
+            interactedElement: result.interactedElement,
+          }),
+      );
+      this.context.history.history.push(new AgentStepRecord(modelOutputString, actionResultsCopy, browserStateHistory));
     }
   }
 
@@ -335,7 +454,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     }
     // 模型偶尔返回 action: null 或空项；只保留形如 {动作名: 参数} 的对象，其余视为没给动作。
     actions = (Array.isArray(actions) ? actions : [actions]).filter(
-      (item: unknown) => item !== null && typeof item === 'object' && !Array.isArray(item) && Object.keys(item).length > 0,
+      (item: unknown) =>
+        item !== null && typeof item === 'object' && !Array.isArray(item) && Object.keys(item).length > 0,
     );
     if (actions.length === 0) logger.warning('No valid actions found', response.action);
     return actions;
@@ -412,7 +532,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           const newState = await browserContext.getState(this.context.options.useVision);
           const newPathHashes = await calcBranchPathHashSet(newState);
           // next action requires index but there are new elements on the page
-          if (!newPathHashes.isSubsetOf(cachedPathHashes)) {
+          if (![...newPathHashes].every(hash => cachedPathHashes.has(hash))) {
             const msg = `Something new appeared after action ${i} / ${actions.length}`;
             logger.info(msg);
             results.push(
@@ -430,10 +550,16 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           const actionKey = applicationActionKey(actionName, actionArgs as Record<string, unknown>, observed);
           if (actionKey) {
             const key = `${applicationProgressKey(observed)}\n${actionKey}`;
-            const attempts = this.noProgressActions ??= new Map();
+            const attempts = (this.noProgressActions ??= new Map());
             const count = attempts.get(key) ?? 0;
             if (count >= 2) {
-              results.push(new ActionResult({ error: 'NO_PAGE_PROGRESS: 同一页面状态下该动作已经执行两次，未观察到变化，已阻止重复点击。请处理页面校验提示或其他独立字段；只剩暂缓项时以部分完成结束，不要反复保存或切换同一入口。', includeInMemory: true }));
+              results.push(
+                new ActionResult({
+                  error:
+                    'NO_PAGE_PROGRESS: 同一页面状态下该动作已经执行两次，未观察到变化，已阻止重复点击。请处理页面校验提示或其他独立字段；只剩暂缓项时以部分完成结束，不要反复保存或切换同一入口。',
+                  includeInMemory: true,
+                }),
+              );
               break;
             }
             attempts.set(key, count + 1);
@@ -446,7 +572,9 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         this.context.trace?.(
           `动作 ${actionName}`,
           Date.now() - actionStarted,
-          [typeof intent === 'string' ? intent : '', result?.error ? `失败：${result.error}` : ''].filter(Boolean).join(' · '),
+          [typeof intent === 'string' ? intent : '', result?.error ? `失败：${result.error}` : '']
+            .filter(Boolean)
+            .join(' · '),
         );
         if (result === undefined) {
           throw new Error(`Action ${actionName} returned undefined`);
@@ -463,7 +591,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           }
         }
         results.push(result);
-        if (formBatch && ((result.error && !result.fieldFailure) || result.isDone || !isPlainFormInput(action, browserState))) break;
+        if (
+          formBatch &&
+          ((result.error && !result.fieldFailure) || result.isDone || !isPlainFormInput(action, browserState))
+        )
+          break;
 
         // check if the task is paused or stopped
         if (this.context.paused || this.context.stopped) {
@@ -482,7 +614,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           JSON.stringify(actionArgs, null, 2),
           JSON.stringify(errorMessage, null, 2),
         );
-        this.context.trace?.(`动作 ${actionName} 异常`, 0, `${JSON.stringify(actionArgs)}\n${error instanceof Error ? error.stack || errorMessage : errorMessage}`);
+        this.context.trace?.(
+          `动作 ${actionName} 异常`,
+          0,
+          `${JSON.stringify(actionArgs)}\n${error instanceof Error ? error.stack || errorMessage : errorMessage}`,
+        );
         // unexpected error, emit event
         this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, errorMessage);
         errCount++;
@@ -502,221 +638,30 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     return results;
   }
 
-  /**
-   * Parse and validate model output from history item
-   */
-  private parseHistoryModelOutput(historyItem: AgentStepRecord): {
-    parsedOutput: ParsedModelOutput;
-    goal: string;
-    actionsToReplay: (Record<string, unknown> | null)[] | null;
-  } {
-    if (!historyItem.modelOutput) {
-      throw new Error('No model output found in history item');
-    }
-
-    let parsedOutput: ParsedModelOutput;
-    try {
-      parsedOutput = JSON.parse(historyItem.modelOutput) as ParsedModelOutput;
-    } catch (error) {
-      throw new Error(`Could not parse modelOutput: ${error}`);
-    }
-
-    // logger.info('Parsed output', JSON.stringify(parsedOutput, null, 2));
-
-    const goal = parsedOutput?.current_state?.next_goal || '';
-    const actionsToReplay = parsedOutput?.action;
-
-    // Validate that there are actions to replay
-    if (
-      !parsedOutput || // No model output string at all
-      !actionsToReplay || // 'action' field is missing or null after parsing
-      (Array.isArray(actionsToReplay) && actionsToReplay.length === 0) || // 'action' is an empty array
-      (Array.isArray(actionsToReplay) && actionsToReplay.length === 1 && actionsToReplay[0] === null) // 'action' is [null]
-    ) {
-      throw new Error('No action to replay');
-    }
-
-    return { parsedOutput, goal, actionsToReplay };
-  }
-
-  /**
-   * Execute actions from history with element index updates
-   */
-  private async executeHistoryActions(
-    parsedOutput: ParsedModelOutput,
-    historyItem: AgentStepRecord,
-    delay: number,
-  ): Promise<ActionResult[]> {
-    const state = await this.context.browserContext.getState(this.context.options.useVision);
-    if (!state) {
-      throw new Error('Invalid browser state');
-    }
-
-    const updatedActions: (Record<string, unknown> | null)[] = [];
-    for (let i = 0; i < parsedOutput.action!.length; i++) {
-      const result = historyItem.result[i];
-      if (!result) {
-        break;
-      }
-      const interactedElement = result.interactedElement;
-      const currentAction = parsedOutput.action![i];
-
-      // Skip null actions
-      if (currentAction === null) {
-        updatedActions.push(null);
-        continue;
-      }
-
-      // If there's no interacted element, just use the action as is
-      if (!interactedElement) {
-        updatedActions.push(currentAction);
-        continue;
-      }
-
-      const updatedAction = await this.updateActionIndices(interactedElement, currentAction, state);
-      updatedActions.push(updatedAction);
-
-      if (updatedAction === null) {
-        throw new Error(`Could not find matching element ${i} in current page`);
-      }
-    }
-
-    logger.debug('updatedActions', updatedActions);
-
-    // Filter out null values and cast to the expected type
-    const validActions = updatedActions.filter((action): action is Record<string, unknown> => action !== null);
-    const result = await this.doMultiAction(validActions);
-
-    // Wait for the specified delay
-    await new Promise(resolve => setTimeout(resolve, delay));
-    return result;
-  }
-
-  async executeHistoryStep(
+  executeHistoryStep(
     historyItem: AgentStepRecord,
     stepIndex: number,
     totalSteps: number,
     maxRetries = 3,
     delay = 1000,
     skipFailures = true,
-  ): Promise<ActionResult[]> {
-    const replayLogger = createLogger('NavigatorAgent:executeHistoryStep');
-    const results: ActionResult[] = [];
-
-    // Parse and validate model output
-    let parsedData: {
-      parsedOutput: ParsedModelOutput;
-      goal: string;
-      actionsToReplay: (Record<string, unknown> | null)[] | null;
-    };
-    try {
-      parsedData = this.parseHistoryModelOutput(historyItem);
-    } catch (error) {
-      const errorMsg = `Step ${stepIndex + 1}: ${error instanceof Error ? error.message : String(error)}`;
-      replayLogger.warning(errorMsg);
-      return [
-        new ActionResult({
-          error: errorMsg,
-          includeInMemory: false,
-        }),
-      ];
-    }
-
-    const { parsedOutput, goal, actionsToReplay } = parsedData;
-    replayLogger.info(`Replaying step ${stepIndex + 1}/${totalSteps}: goal: ${goal}`);
-    replayLogger.debug(`🔄 Replaying actions:`, actionsToReplay);
-
-    // Try to execute the step with retries
-    let retryCount = 0;
-    let success = false;
-
-    while (retryCount < maxRetries && !success) {
-      try {
-        // Check if execution should stop
-        if (this.context.stopped) {
-          replayLogger.info('Replay stopped by user');
-          break;
-        }
-
-        // Execute the history actions
-        const stepResults = await this.executeHistoryActions(parsedOutput, historyItem, delay);
-        results.push(...stepResults);
-        success = true;
-      } catch (error) {
-        retryCount++;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-
-        if (retryCount >= maxRetries) {
-          const failMsg = `Step ${stepIndex + 1} failed after ${maxRetries} attempts: ${errorMessage}`;
-          replayLogger.error(failMsg);
-
-          results.push(
-            new ActionResult({
-              error: failMsg,
-              includeInMemory: true,
-            }),
-          );
-
-          if (!skipFailures) {
-            throw new Error(failMsg);
-          }
-        } else {
-          replayLogger.warning(`Step ${stepIndex + 1} failed (attempt ${retryCount}/${maxRetries}), retrying...`);
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    }
-
-    return results;
+  ) {
+    return replayHistoryStep(
+      {
+        context: this.context,
+        executeActions: actions => this.doMultiAction(actions),
+        updateIndices: (element, action, state) => this.updateActionIndices(element, action, state),
+      },
+      historyItem,
+      stepIndex,
+      totalSteps,
+      maxRetries,
+      delay,
+      skipFailures,
+    );
   }
 
-  async updateActionIndices(
-    historicalElement: DOMHistoryElement,
-    action: Record<string, unknown>,
-    currentState: BrowserState,
-  ): Promise<Record<string, unknown> | null> {
-    // If no historical element or no element tree in current state, return the action unchanged
-    if (!historicalElement || !currentState.elementTree) {
-      return action;
-    }
-
-    // Find the current element in the tree based on the historical element
-    const currentElement = await HistoryTreeProcessor.findHistoryElementInTree(
-      historicalElement,
-      currentState.elementTree,
-    );
-
-    // If no current element found or it doesn't have a highlight index, return null
-    if (!currentElement || currentElement.highlightIndex === null) {
-      return null;
-    }
-
-    // Get action name and args
-    const actionName = Object.keys(action)[0];
-    const actionArgs = action[actionName] as Record<string, unknown>;
-
-    // Get the action instance to access the index
-    const actionInstance = this.actionRegistry.getAction(actionName);
-    if (!actionInstance) {
-      return action;
-    }
-
-    // Get the index argument from the action
-    const oldIndex = actionInstance.getIndexArg(actionArgs);
-
-    // If the index has changed, update it
-    if (oldIndex !== null && oldIndex !== currentElement.highlightIndex) {
-      // Create a new action object with the updated index
-      const updatedAction: Record<string, unknown> = { [actionName]: { ...actionArgs } };
-
-      // Update the index in the action arguments
-      actionInstance.setIndexArg(updatedAction[actionName] as Record<string, unknown>, currentElement.highlightIndex);
-
-      logger.info(`Element moved in DOM, updated index from ${oldIndex} to ${currentElement.highlightIndex}`);
-      return updatedAction;
-    }
-
-    return action;
+  updateActionIndices(element: DOMHistoryElement, action: Record<string, unknown>, state: BrowserState) {
+    return updateActionIndices(this.actionRegistry, element, action, state);
   }
 }

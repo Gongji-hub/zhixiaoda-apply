@@ -2,8 +2,11 @@ import { Actors, ExecutionState } from '../event/types';
 import type { BrowserState } from '../../browser/views';
 import { DOMElementNode, DOMTextNode, type DOMBaseNode } from '../../browser/dom/views';
 import type { FormControlState } from '../../browser/formControls';
+import { waitForApplicationDialog, waitForApplicationResume } from '../applicationDialog';
 import type { AgentContext } from '../types';
-import { formFieldReference, precedingLabel, type FormFieldReference } from '../formReview';
+import { formFieldReference, type FormFieldReference } from '../formReview';
+
+export { waitForApplicationResume } from '../applicationDialog';
 
 export type FieldKind = 'text' | 'textarea' | 'select' | 'combobox' | 'checkbox' | 'radio' | 'switch' | 'editable';
 
@@ -17,6 +20,7 @@ export interface OutlineField {
   value: string;
   valueKnown: boolean;
   selectionConfirmed?: boolean;
+  choicePolicy?: FormControlState['choicePolicy'];
   valid: boolean;
   message: string;
   context: string;
@@ -24,6 +28,8 @@ export interface OutlineField {
   multiple?: boolean;
   typable: boolean;
   readOnly: boolean;
+  datePicker?: boolean;
+  dateRange?: FormControlState['dateRange'];
   options?: string[];
   requirements?: FormControlState['requirements'];
 }
@@ -79,10 +85,14 @@ export function fieldKind(node: DOMElementNode): FieldKind | null {
 
 const clean = (text: string, max: number) => text.replace(/\s+/g, ' ').trim().slice(0, max);
 
+const ICON_ACTION_LABEL_RE = /^(?:删除|移除|添加|新增|delete|remove|trash|add|plus)$/i;
+const ROW_REMOVAL_TEXT = /^(?:删除|移除)(?:这|该|本)(?:一)?(?:段|条|行)(?:信息|经历|记录)?$|^(?:delete|remove)\s+(?:this\s+)?(?:row|entry|record)$/i;
+
 const isButtonLike = (node: DOMElementNode) =>
   ['button', 'a'].includes((node.tagName ?? '').toLowerCase()) ||
   BUTTON_ROLES.includes(node.attributes.role ?? '') ||
-  Boolean(node.attributes.hint);
+  Boolean(node.attributes.hint) ||
+  ICON_ACTION_LABEL_RE.test((node.attributes['aria-label'] ?? node.attributes.title ?? '').trim());
 
 const containsField = (node: DOMElementNode): boolean =>
   node.children.some(child => child instanceof DOMElementNode && (fieldKind(child) !== null || containsField(child)));
@@ -114,6 +124,13 @@ export function collectOutline(root: DOMElementNode): RawItem[] {
       return;
     }
     if (!(node instanceof DOMElementNode)) return;
+    if (node.isVisible && node.xpath && !fieldKind(node)) {
+      const directText = clean(node.children.filter(child => child instanceof DOMTextNode).map(child => child.text).join(' '), 60);
+      if (ROW_REMOVAL_TEXT.test(directText) && !containsField(node)) {
+        out.push({ node, kind: 'button', text: directText });
+        return;
+      }
+    }
     if (node.highlightIndex !== null) {
       const text = clean(node.getAllTextTillNextClickableElement(2), 60);
       if (fieldKind(node)) out.push({ node, kind: 'field', text });
@@ -159,7 +176,10 @@ export async function readFormOutline(context: AgentContext): Promise<FormOutlin
   const page = await context.browserContext.getCurrentPage();
   const raw = collectOutline(state.elementTree);
   const tagged = raw.filter(item => item.node);
-  const ids = await page.tagApplicationElements(tagged.map(item => item.node!.xpath ?? ''));
+  const ids = await page.tagApplicationElements(
+    tagged.map(item => item.node!.xpath ?? ''),
+    tagged.map(item => item.node!),
+  );
   tagged.forEach((item, i) => {
     if (ids[i]) item.node!.attributes['data-qz-field'] = ids[i]!;
   });
@@ -188,28 +208,28 @@ export function assembleOutline(
       const node = item.node!;
       const control: FormControlState & { options?: string[] } = live.get(id)!;
       const reference = formFieldReference(state, node, node.highlightIndex ?? -1);
-      // 字段名取自占位提示时，把页面上真正的标签放在前面，提示附在后面。
-      const placeholder = node.attributes.placeholder ?? '';
-      const visible = placeholder && reference.label === placeholder ? precedingLabel(node) : '';
       const kind = fieldKind(node)!;
       const field: OutlineField = {
         type: 'field',
         id,
         node,
         kind: kind === 'text' && control.popup ? 'combobox' : kind,
-        label: visible && visible !== placeholder ? `${visible}（提示：${placeholder}）` : reference.label,
+        label: reference.label,
         field: reference,
         value: control.value,
         valueKnown: control.valueKnown !== false,
         selectionConfirmed: control.selectionConfirmed,
+        choicePolicy: control.choicePolicy,
         valid: control.valid,
         message: control.validationMessage,
         context: control.context ?? '',
         requirements: control.requirements,
         required: control.required ?? (node.attributes.required !== undefined || node.attributes['aria-required'] === 'true'),
         multiple: control.multiple,
-        typable: (node.tagName ?? '').toLowerCase() === 'input' && node.attributes.readonly !== 'true',
+        typable: control.typable ?? ((node.tagName ?? '').toLowerCase() === 'input' && node.attributes.readonly !== 'true'),
         readOnly: control.readOnly || node.attributes.readonly === 'true',
+        datePicker: control.datePicker,
+        dateRange: control.dateRange,
         options: control.options,
       };
       fields.set(id, field);
@@ -235,27 +255,24 @@ export function assembleOutline(
   return { state, items: deduped, fields, buttons };
 }
 
-/** Finish the in-flight control, then wait before touching the next one. */
-export async function waitForApplicationResume(context: AgentContext): Promise<void> {
-  while (context.paused && !context.stopped && !context.controller.signal.aborted)
-    await new Promise(resolve => setTimeout(resolve, 100));
-  if (context.stopped || context.controller.signal.aborted) throw new Error('操作已停止。');
-}
-
-/** 为空的自定义下拉逐个展开取选项，供方案只从真实选项里选。 */
+/** 为空的下拉字段展开取选项，供方案或用户直接从真实选项里选。 */
 export async function loadDropdownOptions(context: AgentContext, outline: FormOutline, only?: Set<string>): Promise<boolean> {
   const page = await context.browserContext.getCurrentPage();
   let inspected = false;
   for (const field of outline.fields.values()) {
     if (only && !only.has(field.id)) continue;
     if (context.review.isSkipped(field.field) || context.review.isAutoDeferred(field.field)) continue;
-    if (field.kind !== 'combobox' || (field.value.trim() && field.selectionConfirmed !== false)) continue;
+    if (field.datePicker || !['combobox', 'select'].includes(field.kind) || (field.value.trim() && field.selectionConfirmed !== false)) continue;
     await waitForApplicationResume(context);
     await context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_START, `正在读取选项 · ${field.label}`);
     await waitForApplicationResume(context);
+    await waitForApplicationDialog(context);
     inspected = true;
     try {
-      field.options = await page.listCustomOptions(field.node, context.controller.signal);
+      field.options = await context.controlExploration.run(field.field, context.controller.signal, signal =>
+        typeof page.listControlOptions === 'function'
+          ? page.listControlOptions(field.node, signal)
+          : page.listCustomOptions(field.node, signal));
     } catch {
       /* 展不开的下拉留给填写时的反馈处理。 */
     }
@@ -279,11 +296,27 @@ export function outlineText(outline: FormOutline): string {
       const options = item.options?.length
         ? ` 选项：${item.options.slice(0, 50).join(' | ')}${item.typable ? '（可输入筛选，列表可能不全）' : ''}`
         : '';
+      const choice = item.choicePolicy ? ` 输入方式：${{
+        free_text: '允许自由输入，仍须失焦后核验', options_only: '只允许选择已有候选，输入仅用于搜索',
+        custom_option: '允许创建新候选，必须完成创建确认', unknown: '尚未确认是否允许自定义，不能把搜索文字当成已选值',
+      }[item.choicePolicy]}` : '';
       const problem = !item.valid && item.message ? ` ⚠${clean(item.message, 60)}` : '';
       const multiple = item.multiple || item.node.attributes['aria-multiselectable'] === 'true' || item.node.attributes.multiple !== undefined;
-      const kind = `${KIND_LABEL[item.kind]}${item.readOnly && item.kind === 'text' ? '·只读' : ''}${multiple ? '·多选' : ''}`;
+      const datePlaceholder = item.node.attributes.placeholder?.trim() ?? '';
+      const dateRole = /^(?:开始(?:日期|时间)|起始(?:日期|时间)|start date)$/iu.test(datePlaceholder) ? '·开始'
+        : /^(?:结束(?:日期|时间)|截止(?:日期|时间)|end date)$/iu.test(datePlaceholder) ? '·结束' : '';
+      const kindLabel = item.datePicker ? `日期${dateRole}` : KIND_LABEL[item.kind];
+      const kind = `${kindLabel}${item.readOnly && (item.kind === 'text' || item.datePicker) ? '·只读' : ''}${multiple ? '·多选' : ''}`;
+      const rawPlaceholder = (item.node.attributes.placeholder ?? '').replace(/\s+/g, ' ').trim();
+      const placeholder =
+        rawPlaceholder &&
+        rawPlaceholder !== item.label &&
+        !item.label.includes(rawPlaceholder) &&
+        !/^请(?:输入|填写|选择)$/.test(rawPlaceholder)
+          ? ` 占位提示=${JSON.stringify(rawPlaceholder.slice(0, 60))}`
+          : '';
       const requirements = item.requirements ? ` 控件约束=${JSON.stringify(item.requirements)}` : '';
-      return `${item.id} [${kind}] ${item.label}${item.required ? ' *必填' : ' 选填'} = ${value}${options}${problem}${requirements}`;
+      return `${item.id} [${kind}] ${item.label}${item.required ? ' *必填' : ' 选填'} = ${value}${placeholder}${choice}${options}${problem}${requirements}`;
     })
     .join('\n');
 }

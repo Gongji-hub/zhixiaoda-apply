@@ -1,30 +1,20 @@
 import { build } from 'esbuild';
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import Ajv from 'ajv';
-import standaloneCode from 'ajv/dist/standalone/index.js';
 import manifest from '../chrome-extension/manifest.js';
+import { decisionValidatorsPlugin } from './decision-validators.mjs';
 
 const source = 'chrome-extension';
 const resolve = name => path.resolve(name);
-const schemas = JSON.parse(await readFile(source + '/src/background/decisionSchemas.json', 'utf8'));
-const ajv = new Ajv({ strict: false, code: { source: true, esm: true } });
-for (const [key, schema] of Object.entries(schemas)) ajv.addSchema(schema, key);
-const validators = standaloneCode.default(ajv);
-
-await rm('dist', { recursive: true, force: true });
-await mkdir('dist/settings', { recursive: true });
-for (const asset of ['job-panel', 'settings', 'icon-128.png', 'icon-32.png', 'buildDomTree.js'])
-  await cp(source + '/public/' + asset, 'dist/' + asset, { recursive: true });
-await cp('packages/i18n/locales', 'dist/_locales', { recursive: true });
-await writeFile('dist/manifest.json', JSON.stringify(manifest, null, 2));
-await cp('node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'dist/settings/pdf.worker.mjs');
-await cp('node_modules/pdfjs-dist/cmaps', 'dist/settings/cmaps', { recursive: true });
-const { metafile } = await build({
+const options = {
   metafile: true,
-  entryPoints: { background: source + '/src/background/index.ts', 'settings/settings': source + '/src/settings/options.ts' },
-  outdir: 'dist', bundle: true, format: 'esm', platform: 'browser', target: 'chrome120',
-  minify: true, legalComments: 'eof',
+  outdir: 'dist',
+  bundle: true,
+  platform: 'browser',
+  target: 'chrome120',
+  minify: true,
+  sourcemap: false,
+  legalComments: 'eof',
   alias: {
     crypto: resolve('scripts/browser-crypto.mjs'),
     '@src': resolve(source + '/src'),
@@ -33,20 +23,43 @@ const { metafile } = await build({
     '@extension/storage': resolve('packages/storage/lib/settings/generalSettings.ts'),
   },
   define: { 'import.meta.env.DEV': 'false', 'process.env.NODE_ENV': '"production"' },
-  plugins: [{
-    name: 'precompiled-schemas',
-    setup(builder) {
-      builder.onResolve({ filter: /^decision-validators$/ }, () => ({ path: 'validators', namespace: 'schemas' }));
-      builder.onLoad({ filter: /.*/, namespace: 'schemas' }, () => ({ contents: validators, resolveDir: process.cwd() }));
-    },
-  }],
-});
+};
+const validatorsPlugin = await decisionValidatorsPlugin();
 
-// Include license texts for dependencies bundled into the installable extension.
+await rm('dist', { recursive: true, force: true });
+await mkdir('dist/job-panel', { recursive: true });
+for (const asset of ['job-panel/brand-symbol.png', 'settings', 'icon-128.png', 'icon-32.png', 'brand-icon.svg']) {
+  await cp(`${source}/public/${asset}`, `dist/${asset}`, { recursive: true });
+}
+await cp('packages/i18n/locales', 'dist/_locales', { recursive: true });
+await cp('node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'dist/settings/pdf.worker.mjs');
+await cp('node_modules/pdfjs-dist/cmaps', 'dist/settings/cmaps', { recursive: true });
+const builds = await Promise.all([
+  build({
+    ...options,
+    entryPoints: {
+      background: `${source}/src/background/index.ts`,
+      'settings/settings': `${source}/src/settings/options.ts`,
+    },
+    format: 'esm',
+    plugins: [validatorsPlugin],
+  }),
+  build({
+    ...options,
+    entryPoints: {
+      'feedback-overlay': `${source}/src/background/feedback/install.ts`,
+      buildDomTree: `${source}/src/content/domTree/index.js`,
+    },
+    format: 'iife',
+  }),
+]);
+
 const packages = new Set(['pdfjs-dist']);
-for (const input of Object.keys(metafile.inputs)) {
-  const match = input.match(/^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//);
-  if (match) packages.add(match[1].slice('node_modules/'.length));
+for (const { metafile } of builds) {
+  for (const input of Object.keys(metafile.inputs)) {
+    const match = input.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)\//);
+    if (match) packages.add(match[1]);
+  }
 }
 await cp('LICENSE', 'dist/LICENSE');
 await cp('UPSTREAM.md', 'dist/UPSTREAM.md');
@@ -60,3 +73,4 @@ for (const name of packages) {
     }
   }
 }
+await writeFile('dist/manifest.json', JSON.stringify(manifest, null, 2));

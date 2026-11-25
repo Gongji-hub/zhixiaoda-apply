@@ -30,6 +30,7 @@ export enum ExecutionState {
   // Task level states
   TASK_START = 'task.start',
   USER_QUESTION = 'user.question',
+  USER_QUESTION_DISMISSED = 'user.question.dismissed',
   TASK_OK = 'task.ok',
   TASK_PARTIAL = 'task.partial',
   REVIEW_UPDATED = 'review.updated',

@@ -2,6 +2,7 @@ import type { MessageCheckpoint } from './agent/messages/service';
 import type { FormReviewEntry } from './agent/formReview';
 import type { UserQuestion } from './agent/userInput';
 import type { ActionResult } from './agent/types';
+import type { ExplorationSnapshot } from './controlExploration';
 
 export interface ApplicationProgress {
   task: string;
@@ -10,6 +11,7 @@ export interface ApplicationProgress {
   actionResults: Partial<ActionResult>[];
   nSteps: number;
   pendingQuestion: UserQuestion | null;
+  controlExploration?: ExplorationSnapshot;
 }
 export interface ApplicationCheckpoint {
   version: 1;
@@ -17,7 +19,7 @@ export interface ApplicationCheckpoint {
   updatedAt: number;
   status: string;
   target: { tabId: number; windowId: number; origin: string; jobId: string | null; url: string };
-  source: { name: string; hash: string; userId?: string; profileVersion?: number };
+  source: { name: string; hash: string };
   progress: ApplicationProgress;
 }
 const KEY = 'jobAgentApplicationCheckpoint';
